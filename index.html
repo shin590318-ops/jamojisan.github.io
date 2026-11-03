@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>記者会見サバイバル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* gray-900 */
+            touch-action: none; /* Prevent swipe scrolling on mobile */
+            user-select: none;
+        }
+
+        /* Word elements styles */
+        .word {
+            position: absolute;
+            padding: 8px 16px;
+            border-radius: 9999px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            white-space: nowrap;
+            transition: transform 0.1s;
+            pointer-events: auto;
+            /* Center origin for transformations */
+            transform-origin: center;
+        }
+        .word:active {
+            transform: scale(0.9) !important;
+        }
+        .word-normal {
+            background-color: #ffffff;
+            color: #1f2937;
+            border: 2px solid #9ca3af;
+        }
+        .word-bomb {
+            background-color: #f59e0b;
+            color: #fff;
+            border: 2px solid #b45309;
+            animation: pulse-bomb 0.5s infinite alternate;
+            z-index: 20;
+        }
+        .word-special {
+            background-color: #ef4444;
+            color: #fff;
+            border: 2px solid #991b1b;
+            animation: flash-urgent 0.2s infinite alternate;
+            z-index: 30;
+        }
+
+        @keyframes pulse-bomb {
+            0% { box-shadow: 0 0 10px #f59e0b; }
+            100% { box-shadow: 0 0 25px #ef4444; }
+        }
+        @keyframes flash-urgent {
+            0% { background-color: #ef4444; }
+            100% { background-color: #7f1d1d; }
+        }
+
+        /* Visual Effects */
+        .explosion {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, #fef08a 0%, #ef4444 50%, transparent 100%);
+            border-radius: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            pointer-events: none;
+            z-index: 50;
+            animation: explode 0.5s ease-out forwards;
+        }
+        @keyframes explode {
+            0% { transform: translate(-50%, -50%) scale(0.2); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+        }
+
+        .floating-text {
+            position: absolute;
+            font-weight: bold;
+            font-size: 1.5rem;
+            pointer-events: none;
+            z-index: 60;
+            animation: float-up 0.8s ease-out forwards;
+            text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
+        }
+        @keyframes float-up {
+            0% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -40px) scale(1.2); opacity: 0; }
+        }
+
+        .shake {
+            animation: shake-anim 0.3s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes shake-anim {
+            0%, 100% { transform: translate(0, 0); }
+            20%, 60% { transform: translate(-5px, 5px); }
+            40%, 80% { transform: translate(5px, -5px); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- UI Area: Fixed top 120px -->
+    <div id="ui-area" class="fixed top-0 left-0 w-full h-[120px] bg-gray-900 border-b-2 border-gray-700 shadow-lg z-40 flex items-center justify-between px-4">
+        
+        <!-- Left: HP -->
+        <div class="flex flex-col gap-1 w-1/3">
+            <div class="text-xs font-bold text-gray-400">HP: <span id="hp-val" class="text-white">100</span></div>
+            <div class="w-full h-4 bg-gray-700 rounded-full overflow-hidden border border-gray-600">
+                <div id="hp-bar" class="h-full bg-green-500 w-full transition-all duration-200"></div>
+            </div>
+            <!-- Score & Chain under HP -->
+            <div class="flex gap-2 mt-1">
+                <div class="bg-gray-800 px-2 py-1 rounded text-xs border border-gray-600">
+                    <span class="text-gray-400">SCORE:</span> <span id="score-val" class="text-yellow-400 font-black text-sm tabular-nums">0</span>
+                </div>
+                <div class="bg-gray-800 px-2 py-1 rounded text-xs border border-gray-600">
+                    <span class="text-gray-400">CHAIN:</span> <span id="chain-val" class="text-blue-400 font-black text-sm tabular-nums">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center: Status / Multiplier -->
+        <div class="flex flex-col items-center justify-center w-1/3">
+            <div class="text-gray-400 text-[10px] font-bold">MULTIPLIER</div>
+            <div id="multiplier-badge" class="mt-1 bg-gray-700 text-gray-400 text-sm font-black px-3 py-1 rounded border border-gray-600">1x</div>
+        </div>
+
+        <!-- Right: Timer -->
+        <div class="flex flex-col items-end w-1/3">
+            <div class="text-xs font-bold text-gray-400">TIME</div>
+            <div id="time-val" class="text-4xl font-black text-white tabular-nums tracking-tighter">30.0</div>
+        </div>
+    </div>
+
+    <!-- Game Area: Below UI -->
+    <div id="game-area" class="fixed top-[120px] left-0 w-full h-[calc(100vh-120px)] bg-gray-800 overflow-hidden z-10 relative">
+        <!-- Centered President -->
+        <div id="president" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-7xl opacity-80 pointer-events-none z-0 transition-transform">
+            👨‍💼
+        </div>
+        <!-- Words will be spawned here via JS -->
+    </div>
+    
+    <!-- Red Flash Overlay for Damage -->
+    <div id="damage-flash" class="fixed inset-0 bg-red-600 opacity-0 pointer-events-none z-30 transition-opacity duration-100"></div>
+
+    <!-- Modal Layer -->
+    <div id="modal-layer" class="fixed inset-0 flex items-center justify-center z-[100] bg-black/70 pointer-events-auto">
+        
+        <!-- Start Screen -->
+        <div id="start-screen" class="bg-gray-900 p-6 rounded-2xl border border-gray-700 max-w-sm w-11/12 text-center text-white shadow-2xl flex flex-col items-center max-h-[90vh] overflow-y-auto">
+            <h1 class="text-2xl sm:text-3xl font-black mb-4 text-red-500">記者会見サバイバル</h1>
+            <ul class="text-left text-xs sm:text-sm space-y-2 mb-6 bg-gray-800 p-4 rounded-lg w-full">
+                <li>✅ 違う質問をタップ: <span class="text-yellow-400 font-bold">+5点 & チェイン</span></li>
+                <li>❌ 同じ質問をタップ: <span class="text-red-400 font-bold">チェイン解除 & 同ワード数×10ダメージ</span></li>
+                <li>✨ 5チェイン達成: <span class="text-orange-400 font-bold">時限ワード出現 (爆発でスコア2倍)</span></li>
+                <li>⚠️ <span class="text-red-500 font-bold animate-pulse">ボタン外れた担当者</span>: 5秒放置で即ゲームオーバー (踏んでもペナルティなし)</li>
+            </ul>
+            <button id="start-btn" class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-8 rounded-full text-xl shadow-lg transition-transform active:scale-95 cursor-pointer">
+                会見スタート
+            </button>
+        </div>
+
+        <!-- Result Screen -->
+        <div id="result-screen" class="hidden bg-gray-900 p-6 rounded-2xl border-4 max-w-sm w-11/12 text-center text-white shadow-2xl flex flex-col items-center max-h-[90vh] overflow-y-auto">
+            
+            <div id="result-status" class="text-lg font-bold mb-1 text-gray-400"></div>
+            
+            <!-- Rank / Title -->
+            <h2 id="result-rank" class="text-3xl font-black mb-2"></h2>
+            
+            <!-- ASCII Art -->
+            <pre id="result-aa" class="font-mono text-base leading-tight whitespace-pre inline-block text-center mb-4 text-gray-200 bg-black/40 p-3 rounded-lg w-full overflow-x-auto"></pre>
+            
+            <!-- Message -->
+            <div id="result-msg" class="text-sm sm:text-base mb-6 text-white font-bold whitespace-pre-line leading-relaxed p-3 bg-gray-800 rounded-lg w-full border border-gray-700"></div>
+            
+            <!-- Score Display (Hidden on Game Over) -->
+            <div id="result-score-wrap" class="mb-6 w-full bg-gray-800 py-3 rounded-lg border border-gray-700">
+                <div class="text-sm text-gray-400 font-bold">FINAL SCORE</div>
+                <div id="result-score" class="text-5xl font-black text-yellow-400 tabular-nums"></div>
+            </div>
+            
+            <button id="restart-btn" class="bg-white hover:bg-gray-200 text-black font-bold py-3 px-8 rounded-full text-xl shadow-lg transition-transform active:scale-95 cursor-pointer text-gray-900">
+                もう一度
+            </button>
+        </div>
+
+    </div>
+
+<script>
+    // --- Constants & Config ---
+    const MAX_HP = 100;
+    const GAME_DURATION = 30.0;
+    const SPAWN_INTERVAL = 700; // ms
+    
+    const WORD_POOL = [
+        "AIについて", "会社責任について", "無責任すぎる", 
+        "被害総額は", "被害者に対して", "ホワイトハッカー", "喋り過ぎ"
+    ];
+
+    // --- State Variables ---
+    let hp = MAX_HP;
+    let timeLeft = GAME_DURATION;
+    let score = 0;
+    let chain = 0;
+    let scoreMultiplier = 1;
+    let lastTappedWord = "";
+    
+    let isPlaying = false;
+    let words = []; // Stores word objects: { id, el, text, type, x, y, vx, vy, timeoutId }
+    
+    let lastFrameTime = 0;
+    let spawnTimer = 0;
+    let reqId = null;
+
+    // --- DOM Elements ---
+    const elGameArea = document.getElementById('game-area');
+    const elHpVal = document.getElementById('hp-val');
+    const elHpBar = document.getElementById('hp-bar');
+    const elScoreVal = document.getElementById('score-val');
+    const elChainVal = document.getElementById('chain-val');
+    const elTimeVal = document.getElementById('time-val');
+    const elMultiplierBadge = document.getElementById('multiplier-badge');
+    const elPresident = document.getElementById('president');
+    const elDamageFlash = document.getElementById('damage-flash');
+    
+    const elModalLayer = document.getElementById('modal-layer');
+    const elStartScreen = document.getElementById('start-screen');
+    const elResultScreen = document.getElementById('result-screen');
+    const elResultStatus = document.getElementById('result-status');
+    const elResultRank = document.getElementById('result-rank');
+    const elResultAa = document.getElementById('result-aa');
+    const elResultMsg = document.getElementById('result-msg');
+    const elResultScoreWrap = document.getElementById('result-score-wrap');
+    const elResultScore = document.getElementById('result-score');
+
+    // --- Event Listeners ---
+    document.addEventListener("DOMContentLoaded", () => {
+        document.getElementById('start-btn').addEventListener('click', startGame);
+        document.getElementById('restart-btn').addEventListener('click', startGame);
+    });
+
+    // --- Game Logic ---
+    function startGame(e) {
+        if (e) e.preventDefault();
+        if (isPlaying) return;
+
+        // Reset State
+        hp = MAX_HP;
+        timeLeft = GAME_DURATION;
+        score = 0;
+        chain = 0;
+        scoreMultiplier = 1;
+        lastTappedWord = "";
+        
+        // Clear words array and DOM
+        words.forEach(w => { if(w.timeoutId) clearTimeout(w.timeoutId); });
+        words = [];
+        elGameArea.innerHTML = '';
+        elGameArea.appendChild(elPresident); // keep president
+        spawnTimer = 0;
+
+        // Reset UI
+        updateUI();
+        elMultiplierBadge.textContent = "1x";
+        elMultiplierBadge.className = "mt-1 bg-gray-700 text-gray-400 text-sm font-black px-3 py-1 rounded border border-gray-600";
+        elTimeVal.style.color = "white";
+        elPresident.textContent = "👨‍💼";
+
+        // Hide Modals completely
+        elStartScreen.classList.add('hidden');
+        elResultScreen.classList.add('hidden');
+        elModalLayer.classList.add('pointer-events-none');
+        elModalLayer.classList.add('hidden');
+        
+        isPlaying = true;
+        lastFrameTime = performance.now();
+        
+        // Initial spawn
+        spawnWord('normal');
+        reqId = requestAnimationFrame(gameLoop);
+    }
+
+    function gameLoop(timestamp) {
+        if (!isPlaying) return;
+        const dt = timestamp - lastFrameTime;
+        lastFrameTime = timestamp;
+
+        // Update Timer
+        timeLeft -= dt / 1000;
+        if (timeLeft <= 0) {
+            timeLeft = 0;
+            endGame('clear');
+            return;
+        } else {
+            elTimeVal.textContent = timeLeft.toFixed(1);
+            if (timeLeft <= 5.0) elTimeVal.style.color = "#ef4444"; 
+        }
+
+        // Spawn logic
+        spawnTimer += dt;
+        if (spawnTimer >= SPAWN_INTERVAL) {
+            spawnTimer -= SPAWN_INTERVAL;
+            // 15% chance to spawn special staff, otherwise normal
+            if (Math.random() < 0.15) {
+                spawnWord('special');
+            } else {
+                spawnWord('normal');
+            }
+        }
+
+        // Update Word Positions
+        const areaRect = elGameArea.getBoundingClientRect();
+        const maxW = areaRect.width;
+        const maxH = areaRect.height;
+
+        for (let i = words.length - 1; i >= 0; i--) {
+            const w = words[i];
+            
+            // Movement based on delta time
+            w.x += w.vx * (dt / 16);
+            w.y += w.vy * (dt / 16);
+            
+            // Get current dimensions for boundary collision
+            const width = w.el.offsetWidth || 120;
+            const height = w.el.offsetHeight || 40;
+
+            // Bounce off walls
+            if (w.x <= 0) { w.x = 0; w.vx *= -1; }
+            if (w.x + width >= maxW) { w.x = maxW - width; w.vx *= -1; }
+            if (w.y <= 0) { w.y = 0; w.vy *= -1; }
+            if (w.y + height >= maxH) { w.y = maxH - height; w.vy *= -1; }
+
+            // Apply translation (left/top is handled via transform for performance)
+            w.el.style.left = `${w.x}px`;
+            w.el.style.top = `${w.y}px`;
+        }
+
+        if (isPlaying) reqId = requestAnimationFrame(gameLoop);
+    }
+
+    function spawnWord(type) {
+        if (!isPlaying) return;
+
+        let text = "";
+        let cssClass = "";
+        let speed = 2.0 + Math.random() * 2.0;
+
+        if (type === 'normal') {
+            text = WORD_POOL[Math.floor(Math.random() * WORD_POOL.length)];
+            cssClass = "word-normal";
+        } else if (type === 'special') {
+            text = "ボタン外れた担当者";
+            cssClass = "word-special";
+            speed = 4.0 + Math.random() * 2.0; // moves slightly faster
+        } else if (type === 'bomb') {
+            text = "💥 時限ワード 💥";
+            cssClass = "word-bomb";
+            speed = 4.0;
+        }
+
+        const el = document.createElement('div');
+        el.className = `word ${cssClass}`;
+        el.textContent = text;
+        elGameArea.appendChild(el);
+
+        // Ensure we calculate boundaries correctly
+        const areaRect = elGameArea.getBoundingClientRect();
+        
+        // Spawn positions
+        let startX = Math.random() * (areaRect.width - 150);
+        let startY = 0;
+
+        if (type === 'special') {
+            // Spawns near the bottom
+            startY = (areaRect.height * 0.7) + Math.random() * (areaRect.height * 0.2);
+        } else {
+            startY = Math.random() * (areaRect.height - 50);
+        }
+
+        // Random direction velocity
+        const angle = Math.random() * Math.PI * 2;
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed;
+
+        el.style.left = `${startX}px`;
+        el.style.top = `${startY}px`;
+
+        const wordObj = {
+            id: Date.now() + Math.random(),
+            el: el,
+            type: type,
+            text: text,
+            x: startX,
+            y: startY,
+            vx: vx,
+            vy: vy,
+            timeoutId: null
+        };
+
+        // Special condition: Game over if not clicked in 5s
+        if (type === 'special') {
+            wordObj.timeoutId = setTimeout(() => {
+                if (isPlaying) endGame('special_timeout');
+            }, 5000);
+        }
+
+        // Pointerdown for better touch/mouse support
+        el.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); 
+            handleTap(wordObj, e.clientX, e.clientY);
+        });
+
+        words.push(wordObj);
+    }
+
+    function handleTap(wordObj, clickX, clickY) {
+        if (!isPlaying) return;
+
+        // Cleanup element
+        removeWord(wordObj);
+        
+        // Coordinates relative to game area for floating text
+        const areaRect = elGameArea.getBoundingClientRect();
+        const localX = clickX;
+        const localY = clickY - areaRect.top;
+
+        if (wordObj.type === 'special') {
+            // Safe! No chain break, no damage.
+            showFloatingText("SAFE!", localX, localY, "#4ade80");
+        } 
+        else if (wordObj.type === 'bomb') {
+            triggerBomb(localX, localY);
+        } 
+        else if (wordObj.type === 'normal') {
+            if (wordObj.text !== lastTappedWord || lastTappedWord === "") {
+                // Success: Different Word
+                const pts = 5 * scoreMultiplier;
+                score += pts;
+                chain++;
+                lastTappedWord = wordObj.text;
+                
+                showFloatingText(`+${pts}`, localX, localY, "#fde047");
+                
+                // Reaction
+                elPresident.textContent = "😳";
+                setTimeout(() => { if(isPlaying) elPresident.textContent = "👨‍💼"; }, 200);
+
+                // 5 Chain Reward check
+                if (chain > 0 && chain % 5 === 0) {
+                    spawnWord('bomb');
+                    showFloatingText("BOMB SPAWNED!", localX, localY - 30, "#f97316");
+                }
+            } else {
+                // Failure: Same Word Tapped
+                const sameWordsCount = words.filter(w => w.type === 'normal' && w.text === wordObj.text).length;
+                const penaltyCount = Math.max(1, sameWordsCount); // minimum 1 multiplier
+                const dmg = penaltyCount * 10;
+                
+                chain = 0;
+                hp -= dmg;
+                
+                showFloatingText(`-${dmg} HP!`, localX, localY, "#ef4444");
+                
+                // Reaction
+                elPresident.textContent = "😏";
+                setTimeout(() => { if(isPlaying) elPresident.textContent = "👨‍💼"; }, 400);
+                
+                triggerDamageEffect();
+
+                if (hp <= 0) {
+                    hp = 0;
+                    endGame('hp_zero');
+                }
+            }
+        }
+        updateUI();
+    }
+
+    function removeWord(wordObj) {
+        if (wordObj.timeoutId) clearTimeout(wordObj.timeoutId);
+        if (wordObj.el && wordObj.el.parentNode) {
+            wordObj.el.parentNode.removeChild(wordObj.el);
+        }
+        words = words.filter(w => w.id !== wordObj.id);
+    }
+
+    function triggerBomb(x, y) {
+        scoreMultiplier = 2;
+        elMultiplierBadge.textContent = "2x BONUS!";
+        elMultiplierBadge.className = "mt-1 bg-red-600 text-white text-sm font-black px-3 py-1 rounded border border-red-800 animate-pulse shadow-lg";
+        
+        triggerShake();
+
+        // Explosion Visual
+        const explosion = document.createElement('div');
+        explosion.className = 'explosion';
+        explosion.style.left = `${x}px`;
+        explosion.style.top = `${y}px`;
+        elGameArea.appendChild(explosion);
+        setTimeout(() => explosion.remove(), 500);
+
+        showFloatingText("BOOM!", x, y - 40, "#ef4444");
+
+        // Destroy up to 5 random normal words
+        const normalWords = words.filter(w => w.type === 'normal');
+        const shuffle = normalWords.sort(() => 0.5 - Math.random());
+        const targets = shuffle.slice(0, 5);
+
+        targets.forEach(tw => {
+            showFloatingText("💥", tw.x + 50, tw.y + 20, "#f59e0b");
+            removeWord(tw);
+        });
+    }
+
+    function triggerDamageEffect() {
+        elDamageFlash.style.opacity = '0.4';
+        setTimeout(() => { elDamageFlash.style.opacity = '0'; }, 150);
+        triggerShake();
+    }
+
+    function triggerShake() {
+        document.body.classList.remove('shake');
+        void document.body.offsetWidth; // trigger reflow
+        document.body.classList.add('shake');
+    }
+
+    function showFloatingText(text, x, y, color) {
+        const el = document.createElement('div');
+        el.className = 'floating-text';
+        el.textContent = text;
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.style.color = color;
+        // Adjust translation to center the text
+        el.style.transform = `translate(-50%, 0)`;
+        elGameArea.appendChild(el);
+        setTimeout(() => el.remove(), 800);
+    }
+
+    function updateUI() {
+        elHpVal.textContent = Math.ceil(hp);
+        const hpPercent = Math.max(0, Math.min(100, (hp / MAX_HP) * 100));
+        elHpBar.style.width = `${hpPercent}%`;
+        
+        if (hpPercent <= 30) elHpBar.style.backgroundColor = "#ef4444";
+        else if (hpPercent <= 60) elHpBar.style.backgroundColor = "#f59e0b";
+        else elHpBar.style.backgroundColor = "#22c55e";
+
+        elScoreVal.textContent = score;
+        elChainVal.textContent = chain;
+    }
+
+    function endGame(reason) {
+        isPlaying = false;
+        cancelAnimationFrame(reqId);
+        
+        // Stop all special word timeouts
+        words.forEach(w => { if(w.timeoutId) clearTimeout(w.timeoutId); });
+
+        // Show Modal Layer
+        elModalLayer.classList.remove('hidden');
+        elModalLayer.classList.remove('pointer-events-none');
+        elResultScreen.classList.remove('hidden');
+        
+        elResultScore.textContent = score;
+
+        if (reason === 'clear') {
+            elResultStatus.textContent = "会見終了 (SURVIVED)";
+            elResultStatus.className = "text-lg font-bold mb-1 text-green-400";
+            elResultScoreWrap.classList.remove('hidden');
+            
+            // Assign Tiers based on Score
+            if (score > 300) {
+                elResultRank.textContent = "社長120%歓喜";
+                elResultRank.className = "text-3xl font-black mb-2 text-red-500 animate-bounce";
+                elResultAa.textContent = "✌('ω'✌ )三✌('ω')✌三( ✌'ω')✌";
+                elResultMsg.textContent = "完璧だ！お前は天才か！！";
+                elResultScreen.style.borderColor = "#ef4444";
+            } else if (score > 200) {
+                elResultRank.textContent = "社長狂喜乱舞";
+                elResultRank.className = "text-3xl font-black mb-2 text-orange-400";
+                elResultAa.textContent = "ヽ( ﾟ▽ﾟ)ﾉ";
+                elResultMsg.textContent = "素晴らしい対応だ！";
+                elResultScreen.style.borderColor = "#f97316";
+            } else if (score > 100) {
+                elResultRank.textContent = "社長満足";
+                elResultRank.className = "text-3xl font-black mb-2 text-blue-400";
+                elResultAa.textContent = "( ¯﹀¯ )";
+                elResultMsg.textContent = "ふむ、悪くない。";
+                elResultScreen.style.borderColor = "#3b82f6";
+            } else {
+                elResultRank.textContent = "社長不満";
+                elResultRank.className = "text-3xl font-black mb-2 text-gray-400";
+                elResultAa.textContent = "( ˘•ω•˘ )";
+                elResultMsg.textContent = "なんだこの結果は...";
+                elResultScreen.style.borderColor = "#9ca3af";
+            }
+        } 
+        else if (reason === 'hp_zero') {
+            elResultStatus.textContent = "会見打ち切り (GAME OVER)";
+            elResultStatus.className = "text-lg font-bold mb-1 text-red-500";
+            
+            elResultRank.textContent = "体力切れ";
+            elResultRank.className = "text-3xl font-black mb-2 text-red-600";
+            elResultAa.textContent = "＿|￣|○";
+            elResultMsg.textContent = "「命の砂時計を大事にしてください！」";
+            elResultMsg.className = "text-base sm:text-lg font-bold text-red-300 bg-red-900/50 p-4 rounded-lg whitespace-pre-line w-full";
+            
+            elResultScreen.style.borderColor = "#dc2626";
+            elResultScoreWrap.classList.add('hidden'); // Hide score on failure
+        } 
+        else if (reason === 'special_timeout') {
+            elResultStatus.textContent = "大炎上 (GAME OVER)";
+            elResultStatus.className = "text-lg font-bold mb-1 text-red-500 animate-pulse";
+            
+            elResultRank.textContent = "放送事故";
+            elResultRank.className = "text-3xl font-black mb-2 text-red-600";
+            elResultAa.textContent = "(╬ ಠ 益ಠ)";
+            elResultMsg.textContent = "「ちゃんとボタン閉めて。あなたお詫びをしているのにボタン開けてどうするんだ！」";
+            elResultMsg.className = "text-base sm:text-lg font-bold text-red-300 bg-red-900/50 p-4 rounded-lg whitespace-pre-line w-full";
+            
+            elResultScreen.style.borderColor = "#dc2626";
+            elResultScoreWrap.classList.add('hidden');
+        }
+    }
+</script>
+</body>
+</html>
